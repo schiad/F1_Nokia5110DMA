@@ -319,34 +319,73 @@ int main(void) {
 	y = 1;
 	nokia_str("F4IFB", &x, &y);
 	x = 0;
-	y = 3;
-	nokia_str("Nokia 5110", &x, &y);
+	y = 4;
+	//nokia_str("Nokia 5110", &x, &y);
+
+	Nokia_map[3][0] 	= 0b00011111;
+	Nokia_map[3][1] 	= 0b00000101;
+	Nokia_map[3][2] 	= 0b00000001;
+	Nokia_map[3][3] 	= 0b00000000;
+	Nokia_map[3][4] 	= 0b00000111;
+	Nokia_map[3][5] 	= 0b00000100;
+	Nokia_map[3][6] 	= 0b00011111;
+	Nokia_map[3][7] 	= 0b00000000;
+	Nokia_map[3][8] 	= 0b00010001;
+	Nokia_map[3][9] 	= 0b00011111;
+	Nokia_map[3][10] 	= 0b00010001;
+	Nokia_map[3][11] 	= 0b00000000;
+	Nokia_map[3][12] 	= 0b00011111;
+	Nokia_map[3][13] 	= 0b00000101;
+	Nokia_map[3][14] 	= 0b00000001;
+	Nokia_map[3][15] 	= 0b00000000;
+	Nokia_map[3][16] 	= 0b00011111;
+	Nokia_map[3][17] 	= 0b00010101;
+	Nokia_map[3][18] 	= 0b00001010;
+	Nokia_map[3][19] 	= 0b00000000;
+
+    Nokia_map[2][0]		= 0b01111111;
+	Nokia_map[2][1]		= 0b00101010;
+	Nokia_map[2][2]		= 0b00011100;
+	Nokia_map[2][3]		= 0b00001000;
+	Nokia_map[2][4]		= 0b00001000;
+	Nokia_map[2][5]		= 0b00001000;
+	Nokia_map[2][6]		= 0b00011000;
+	Nokia_map[2][7]		= 0b01100000;
+	Nokia_map[2][8]		= 0b10001110;
+	Nokia_map[2][9]		= 0b01110001;
+	Nokia_map[2][10]	= 0b01001110;
+	Nokia_map[2][11]	= 0b10000000;
+	Nokia_map[2][12]	= 0b01001110;
+	Nokia_map[2][13]	= 0b00110001;
+	Nokia_map[2][14]	= 0b01001110;
+	Nokia_map[2][15]	= 0b10000000;
+	Nokia_map[2][16]	= 0b01001110;
+	Nokia_map[2][17]	= 0b00110001;
+	Nokia_map[2][18]	= 0b01001110;
+	Nokia_map[2][19]	= 0b10000000;
+	Nokia_map[2][20]	= 0b01001110;
+	Nokia_map[2][21]	= 0b00110001;
+	Nokia_map[2][22]	= 0b01001110;
+	Nokia_map[2][23]	= 0b10000000;
+	Nokia_map[2][24]	= 0b01100000;
+	Nokia_map[2][25]	= 0b00011000;
+	Nokia_map[2][26]	= 0b00001000;
+	Nokia_map[2][27]	= 0b00001000;
+	Nokia_map[2][28]	= 0b01111111;
+	Nokia_map[2][29]	= 0b00000000;
+	Nokia_map[2][30]	= 0b00111110;
+	Nokia_map[2][31]	= 0b00000000;
+	Nokia_map[2][32]	= 0b00011100;
+	Nokia_map[2][33]	= 0b00000000;
+	Nokia_map[2][34]	= 0b00001000;
+	Nokia_map[2][38]	= 0b00000000;
 
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 	while (1) {
-		Nokia_map[2][0] 	= 0b00011111;
-		Nokia_map[2][1] 	= 0b00000101;
-		Nokia_map[2][2] 	= 0b00000001;
-		Nokia_map[2][3] 	= 0b00000000;
-		Nokia_map[2][4] 	= 0b00000111;
-		Nokia_map[2][5] 	= 0b00000100;
-		Nokia_map[2][6] 	= 0b00011111;
-		Nokia_map[2][7] 	= 0b00000000;
-		Nokia_map[2][8] 	= 0b00010001;
-		Nokia_map[2][9] 	= 0b00011111;
-		Nokia_map[2][10] 	= 0b00010001;
-		Nokia_map[2][11] 	= 0b00000000;
-		Nokia_map[2][12] 	= 0b00011111;
-		Nokia_map[2][13] 	= 0b00000101;
-		Nokia_map[2][14] 	= 0b00000001;
-		Nokia_map[2][15] 	= 0b00000000;
-		Nokia_map[2][16] 	= 0b00011111;
-		Nokia_map[2][17] 	= 0b00010101;
-		Nokia_map[2][18] 	= 0b00001010;
-		Nokia_map[2][19] 	= 0b00000000;
+
 
 		/* USER CODE END WHILE */
 

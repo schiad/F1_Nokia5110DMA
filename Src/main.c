@@ -127,6 +127,10 @@ static const uint8_t ASCII[96][5] = { { 0x00, 0x00, 0x00, 0x00, 0x00 } // 20
 };
 
 uint8_t Nokia_map[6][84];
+uint16_t ADC_BUFF = 168;
+uint16_t BUFF_ADC1[168];
+uint16_t BUFF_ADC3[168];
+uint16_t trig = 2048;
 
 /* USER CODE END PTD */
 
@@ -140,6 +144,11 @@ uint8_t Nokia_map[6][84];
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc1;
+ADC_HandleTypeDef hadc3;
+DMA_HandleTypeDef hdma_adc1;
+DMA_HandleTypeDef hdma_adc3;
+
 SPI_HandleTypeDef hspi1;
 DMA_HandleTypeDef hdma_spi1_tx;
 
@@ -156,7 +165,9 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_ADC1_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_ADC3_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -246,7 +257,7 @@ void nokia_init(SPI_HandleTypeDef *hspi) {
 	HAL_Delay(1);
 	HAL_GPIO_WritePin(RST_GPIO_Port, RST_Pin, 1);
 	Nokia_map[0][0] = 0x21;
-	Nokia_map[0][1] = 0xb9;
+	Nokia_map[0][1] = 0xb5;
 	Nokia_map[0][2] = 0x04;
 	Nokia_map[0][3] = 0x14;
 	Nokia_map[0][4] = 0x20;
@@ -269,12 +280,73 @@ void nokia_refresh_map(SPI_HandleTypeDef *hspi) {
 
 void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi) {
 	HAL_GPIO_WritePin(CE_GPIO_Port, CE_Pin, 1);
+
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 	if (htim->Instance == TIM1) {
 		nokia_refresh_map(&hspi1);
 	}
+}
+
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
+	HAL_GPIO_TogglePin(ADCint_GPIO_Port, ADCint_Pin);
+	if (hadc->Instance == ADC3){
+	Scope_buff_to_Disp(2048, 0);
+	}
+	HAL_GPIO_TogglePin(ADCint_GPIO_Port, ADCint_Pin);
+}
+
+void Scope_buff_to_Disp(uint16_t trig, uint8_t trig_type) {
+	static uint8_t i, x;
+	static uint8_t j, y;
+	static uint16_t val;
+	static uint16_t val2;
+	static uint32_t means;
+	static uint8_t str[20];
+	j = 0;
+	while (BUFF_ADC1[j] >> 2 > trig >> 2 && j < 84) {
+		j++;
+	}
+	while (BUFF_ADC1[j] >> 2 < trig >> 2 && j < 84) {
+		j++;
+	}
+
+	if (j == 84) {
+		j = 0;
+	}
+	i = 0;
+	while (i < 84) {
+		val = BUFF_ADC1[i + j];
+		val2 = BUFF_ADC3[i + j];
+		if (i % 10 == 0) {
+			Nokia_map[1][i] = 1;
+		} else {
+			Nokia_map[1][i] = 0;
+		}
+		Nokia_map[2][i] = 0;
+		if (i % 10 == 0) {
+			Nokia_map[3][i] = 1;
+		} else {
+			Nokia_map[3][i] = 0;
+		}
+		if (i % 10 == 0) {
+			Nokia_map[4][i] = 128;
+		} else {
+			Nokia_map[4][i] = 0;
+		}
+		Nokia_map[4 - (val >> 10)][i] = Nokia_map[4 - (val >> 10)][i]
+				| (1 << (7 - ((val >> 7) & 0b00000111)));
+		Nokia_map[4 - (val2 >> 10)][i] = Nokia_map[4 - (val2 >> 10)][i]
+						| (1 << (7 - ((val2 >> 7) & 0b00000111)));
+		i++;
+		means += val;
+	}
+	means /= 104;
+	x = 0;
+	y = 5;
+	sprintf(str, "means :%dmV", means);
+	nokia_str(str, &x, &y);
 }
 
 /* USER CODE END 0 */
@@ -312,82 +384,20 @@ int main(void)
   MX_DMA_Init();
   MX_SPI1_Init();
   MX_TIM1_Init();
+  MX_ADC1_Init();
   MX_TIM2_Init();
+  MX_ADC3_Init();
   /* USER CODE BEGIN 2 */
 	nokia_init(&hspi1);
-	HAL_TIM_Base_Start_IT(&htim1);
-//	HAL_TIM_Base_Start(&htim2);
-	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
-	HAL_Delay(100);
 	x = 0;
 	y = 0;
-	nokia_str("Salim", &x, &y);
-	x = 0;
-	y = 1;
-	nokia_str("F4IFB", &x, &y);
-	x = 0;
-	y = 4;
-	//nokia_str("Nokia 5110", &x, &y);
+	nokia_str("STM32SCOPE", &x, &y);
+	HAL_TIM_Base_Start_IT(&htim1);
+	HAL_ADC_Start_DMA(&hadc1, BUFF_ADC1, ADC_BUFF);
+	HAL_ADC_Start_DMA(&hadc3, BUFF_ADC3, ADC_BUFF);
+	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
 
-	Nokia_map[3][0] 	= 0b00011111;
-	Nokia_map[3][1] 	= 0b00000101;
-	Nokia_map[3][2] 	= 0b00000001;
-	Nokia_map[3][3] 	= 0b00000000;
-	Nokia_map[3][4] 	= 0b00000111;
-	Nokia_map[3][5] 	= 0b00000100;
-	Nokia_map[3][6] 	= 0b00011111;
-	Nokia_map[3][7] 	= 0b00000000;
-	Nokia_map[3][8] 	= 0b00010001;
-	Nokia_map[3][9] 	= 0b00011111;
-	Nokia_map[3][10] 	= 0b00010001;
-	Nokia_map[3][11] 	= 0b00000000;
-	Nokia_map[3][12] 	= 0b00011111;
-	Nokia_map[3][13] 	= 0b00000101;
-	Nokia_map[3][14] 	= 0b00000001;
-	Nokia_map[3][15] 	= 0b00000000;
-	Nokia_map[3][16] 	= 0b00011111;
-	Nokia_map[3][17] 	= 0b00010101;
-	Nokia_map[3][18] 	= 0b00001010;
-	Nokia_map[3][19] 	= 0b00000000;
-
-    Nokia_map[2][0]		= 0b01111111;
-	Nokia_map[2][1]		= 0b00101010;
-	Nokia_map[2][2]		= 0b00011100;
-	Nokia_map[2][3]		= 0b00001000;
-	Nokia_map[2][4]		= 0b00001000;
-	Nokia_map[2][5]		= 0b00001000;
-	Nokia_map[2][6]		= 0b00011000;
-	Nokia_map[2][7]		= 0b01100000;
-	Nokia_map[2][8]		= 0b10001110;
-	Nokia_map[2][9]		= 0b01110001;
-	Nokia_map[2][10]	= 0b01001110;
-	Nokia_map[2][11]	= 0b10000000;
-	Nokia_map[2][12]	= 0b01001110;
-	Nokia_map[2][13]	= 0b00110001;
-	Nokia_map[2][14]	= 0b01001110;
-	Nokia_map[2][15]	= 0b10000000;
-	Nokia_map[2][16]	= 0b01001110;
-	Nokia_map[2][17]	= 0b00110001;
-	Nokia_map[2][18]	= 0b01001110;
-	Nokia_map[2][19]	= 0b10000000;
-	Nokia_map[2][20]	= 0b01001110;
-	Nokia_map[2][21]	= 0b00110001;
-	Nokia_map[2][22]	= 0b01001110;
-	Nokia_map[2][23]	= 0b10000000;
-	Nokia_map[2][24]	= 0b01100000;
-	Nokia_map[2][25]	= 0b00011000;
-	Nokia_map[2][26]	= 0b00001000;
-	Nokia_map[2][27]	= 0b00001000;
-	Nokia_map[2][28]	= 0b01111111;
-	Nokia_map[2][29]	= 0b00000000;
-	Nokia_map[2][30]	= 0b00111110;
-	Nokia_map[2][31]	= 0b00000000;
-	Nokia_map[2][32]	= 0b00011100;
-	Nokia_map[2][33]	= 0b00000000;
-	Nokia_map[2][34]	= 0b00001000;
-	Nokia_map[2][38]	= 0b00000000;
-
-	__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 1500);
+	__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 0);
 
   /* USER CODE END 2 */
 
@@ -410,6 +420,7 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
   /** Initializes the CPU, AHB and APB busses clocks 
   */
@@ -431,12 +442,108 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV16;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC;
+  PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV8;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/**
+  * @brief ADC1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC1_Init(void)
+{
+
+  /* USER CODE BEGIN ADC1_Init 0 */
+
+  /* USER CODE END ADC1_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC1_Init 1 */
+
+  /* USER CODE END ADC1_Init 1 */
+  /** Common config 
+  */
+  hadc1.Instance = ADC1;
+  hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
+  hadc1.Init.ContinuousConvMode = ENABLE;
+  hadc1.Init.DiscontinuousConvMode = DISABLE;
+  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc1.Init.NbrOfConversion = 1;
+  if (HAL_ADC_Init(&hadc1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure Regular Channel 
+  */
+  sConfig.Channel = ADC_CHANNEL_2;
+  sConfig.Rank = ADC_REGULAR_RANK_1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_239CYCLES_5;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC1_Init 2 */
+
+  /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+  * @brief ADC3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC3_Init(void)
+{
+
+  /* USER CODE BEGIN ADC3_Init 0 */
+
+  /* USER CODE END ADC3_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC3_Init 1 */
+
+  /* USER CODE END ADC3_Init 1 */
+  /** Common config 
+  */
+  hadc3.Instance = ADC3;
+  hadc3.Init.ScanConvMode = ADC_SCAN_DISABLE;
+  hadc3.Init.ContinuousConvMode = ENABLE;
+  hadc3.Init.DiscontinuousConvMode = DISABLE;
+  hadc3.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc3.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc3.Init.NbrOfConversion = 1;
+  if (HAL_ADC_Init(&hadc3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure Regular Channel 
+  */
+  sConfig.Channel = ADC_CHANNEL_3;
+  sConfig.Rank = ADC_REGULAR_RANK_1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_239CYCLES_5;
+  if (HAL_ADC_ConfigChannel(&hadc3, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC3_Init 2 */
+
+  /* USER CODE END ADC3_Init 2 */
+
 }
 
 /**
@@ -498,10 +605,10 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 7199;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 100;
-  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV2;
+  htim1.Init.Period = 99;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
-  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
   {
     Error_Handler();
@@ -590,11 +697,18 @@ static void MX_DMA_Init(void)
 
   /* DMA controller clock enable */
   __HAL_RCC_DMA1_CLK_ENABLE();
+  __HAL_RCC_DMA2_CLK_ENABLE();
 
   /* DMA interrupt init */
+  /* DMA1_Channel1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
   /* DMA1_Channel3_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Channel3_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA1_Channel3_IRQn);
+  /* DMA2_Channel4_5_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Channel4_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Channel4_5_IRQn);
 
 }
 
@@ -609,10 +723,21 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(ADCint_GPIO_Port, ADCint_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, RST_Pin|DC_Pin|CE_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : ADCint_Pin */
+  GPIO_InitStruct.Pin = ADCint_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(ADCint_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : RST_Pin DC_Pin CE_Pin */
   GPIO_InitStruct.Pin = RST_Pin|DC_Pin|CE_Pin;

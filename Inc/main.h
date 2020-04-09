@@ -60,6 +60,8 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define ADCint_Pin GPIO_PIN_9
+#define ADCint_GPIO_Port GPIOB
 #define RST_Pin GPIO_PIN_1
 #define RST_GPIO_Port GPIOA
 #define DC_Pin GPIO_PIN_6

@@ -19,6 +19,7 @@ Image of screen shoot with 2 signals and means voltage of the displayed signal.
 - [ ] Change time base
 - [ ] Change voltage base (may with better hardware ?)
 - [ ] Voltmeter, Ammeter, Ohmmeter Capacitance meter....
+- [ ] Battery tester
 - [ ] LRC Meter with ESR ?
 - [ ] More options ?
 

@@ -292,23 +292,35 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
 	HAL_GPIO_TogglePin(ADCint_GPIO_Port, ADCint_Pin);
 	if (hadc->Instance == ADC3){
-	Scope_buff_to_Disp(2048, 0);
+	Scope_buff_to_Disp(2048, 1);
 	}
 	HAL_GPIO_TogglePin(ADCint_GPIO_Port, ADCint_Pin);
 }
 
 void Scope_buff_to_Disp(uint16_t trig, uint8_t trig_type) {
-	static uint8_t i, x;
-	static uint8_t j, y;
+	static uint16_t i, x;
+	static uint16_t j, y;
 	static uint16_t val;
 	static uint16_t val2;
-	static uint32_t means;
+	static uint16_t trigger;
+	static uint32_t means, meanstriger;
 	static uint8_t str[20];
 	j = 0;
-	while (BUFF_ADC1[j] >> 2 > trig >> 2 && j < 84) {
+	meanstriger = 0;
+	while (j < ADC_BUFF) {
+		meanstriger += BUFF_ADC1[j];
 		j++;
 	}
-	while (BUFF_ADC1[j] >> 2 < trig >> 2 && j < 84) {
+	meanstriger /= ADC_BUFF;
+	if (trig_type == 1) {
+		trigger = meanstriger;
+	}
+
+	j = 0;
+	while (BUFF_ADC1[j] >> 2 > trigger >> 2 && j < 84) {
+		j++;
+	}
+	while (BUFF_ADC1[j] >> 2 < trigger >> 2 && j < 84) {
 		j++;
 	}
 
@@ -361,7 +373,7 @@ int main(void)
 	uint8_t x;
 	uint8_t y;
   /* USER CODE END 1 */
-  
+
 
   /* MCU Configuration--------------------------------------------------------*/
 
@@ -397,7 +409,7 @@ int main(void)
 	HAL_ADC_Start_DMA(&hadc3, BUFF_ADC3, ADC_BUFF);
 	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
 
-	__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 0);
+	__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 1950);
 
   /* USER CODE END 2 */
 
@@ -422,7 +434,7 @@ void SystemClock_Config(void)
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
   RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
-  /** Initializes the CPU, AHB and APB busses clocks 
+  /** Initializes the CPU, AHB and APB busses clocks
   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
@@ -435,7 +447,7 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  /** Initializes the CPU, AHB and APB busses clocks 
+  /** Initializes the CPU, AHB and APB busses clocks
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
@@ -473,7 +485,7 @@ static void MX_ADC1_Init(void)
   /* USER CODE BEGIN ADC1_Init 1 */
 
   /* USER CODE END ADC1_Init 1 */
-  /** Common config 
+  /** Common config
   */
   hadc1.Instance = ADC1;
   hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
@@ -486,7 +498,7 @@ static void MX_ADC1_Init(void)
   {
     Error_Handler();
   }
-  /** Configure Regular Channel 
+  /** Configure Regular Channel
   */
   sConfig.Channel = ADC_CHANNEL_2;
   sConfig.Rank = ADC_REGULAR_RANK_1;
@@ -518,7 +530,7 @@ static void MX_ADC3_Init(void)
   /* USER CODE BEGIN ADC3_Init 1 */
 
   /* USER CODE END ADC3_Init 1 */
-  /** Common config 
+  /** Common config
   */
   hadc3.Instance = ADC3;
   hadc3.Init.ScanConvMode = ADC_SCAN_DISABLE;
@@ -531,7 +543,7 @@ static void MX_ADC3_Init(void)
   {
     Error_Handler();
   }
-  /** Configure Regular Channel 
+  /** Configure Regular Channel
   */
   sConfig.Channel = ADC_CHANNEL_3;
   sConfig.Rank = ADC_REGULAR_RANK_1;
@@ -692,7 +704,7 @@ static void MX_TIM2_Init(void)
 /** 
   * Enable DMA controller clock
   */
-static void MX_DMA_Init(void) 
+static void MX_DMA_Init(void)
 {
 
   /* DMA controller clock enable */
@@ -773,7 +785,7 @@ void Error_Handler(void)
   * @retval None
   */
 void assert_failed(uint8_t *file, uint32_t line)
-{ 
+{
   /* USER CODE BEGIN 6 */
 	/* User can add his own implementation to report the file name and line number,
 	 tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */

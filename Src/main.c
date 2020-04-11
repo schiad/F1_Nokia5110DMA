@@ -127,9 +127,9 @@ static const uint8_t ASCII[96][5] = { { 0x00, 0x00, 0x00, 0x00, 0x00 } // 20
 };
 
 uint8_t Nokia_map[6][84];
-uint16_t ADC_BUFF = 168;
-uint16_t BUFF_ADC1[168];
-uint16_t BUFF_ADC3[168];
+uint16_t ADC_BUFF = 4200;
+uint16_t BUFF_ADC1[4200];
+uint16_t BUFF_ADC3[4200];
 uint16_t trig = 2048;
 
 /* USER CODE END PTD */
@@ -154,6 +154,8 @@ DMA_HandleTypeDef hdma_spi1_tx;
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim4;
+TIM_HandleTypeDef htim8;
 
 /* USER CODE BEGIN PV */
 
@@ -167,6 +169,8 @@ static void MX_SPI1_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_TIM4_Init(void);
+static void MX_TIM8_Init(void);
 static void MX_ADC3_Init(void);
 /* USER CODE BEGIN PFP */
 
@@ -280,6 +284,7 @@ void nokia_refresh_map(SPI_HandleTypeDef *hspi) {
 
 void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi) {
 	HAL_GPIO_WritePin(CE_GPIO_Port, CE_Pin, 1);
+	Scope_buff_to_Disp(2048, 0, 1, 0);
 
 }
 
@@ -291,70 +296,124 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
 	HAL_GPIO_TogglePin(ADCint_GPIO_Port, ADCint_Pin);
-	if (hadc->Instance == ADC3){
-	Scope_buff_to_Disp(2048, 1);
+	if (hadc->Instance == ADC3) {
+		Scope_buff_to_Disp(2048, 0, 0, 1);
 	}
 	HAL_GPIO_TogglePin(ADCint_GPIO_Port, ADCint_Pin);
 }
 
-void Scope_buff_to_Disp(uint16_t trig, uint8_t trig_type) {
+void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef* hadc) {
+	HAL_GPIO_TogglePin(ADCint_GPIO_Port, ADCint_Pin);
+	if (hadc->Instance == ADC3) {
+		Scope_buff_to_Disp(2048, 0, 0, 0);
+	}
+	HAL_GPIO_TogglePin(ADCint_GPIO_Port, ADCint_Pin);
+}
+
+void Scope_buff_to_Disp(uint16_t trig, uint8_t trig_type, uint8_t del,
+		uint8_t half) {
 	static uint16_t i, x;
 	static uint16_t j, y;
 	static uint16_t val;
 	static uint16_t val2;
 	static uint16_t trigger;
-	static uint32_t means, meanstriger;
+	static uint32_t means, meanstrigger;
+	static uint32_t samples;
+	static uint16_t min, max;
+	static uint16_t bfstart, bfstop;
 	static uint8_t str[20];
-	j = 0;
-	meanstriger = 0;
-	while (j < ADC_BUFF) {
-		meanstriger += BUFF_ADC1[j];
-		j++;
-	}
-	meanstriger /= ADC_BUFF;
-	if (trig_type == 1) {
-		trigger = meanstriger;
+	meanstrigger = 0;
+	max = 0;
+	min = 65535;
+	if (!del) {
+		if (half) {
+			bfstart = ADC_BUFF / 2;
+			bfstop = ADC_BUFF;
+		} else {
+			bfstart = 0;
+			bfstop = ADC_BUFF / 2;
+		}
+
+		if (trig_type == 1) {
+			j = 0;
+			while (j < 128) {
+				meanstrigger += BUFF_ADC1[j];
+//				if (max < BUFF_ADC1[j]) {
+//					max = BUFF_ADC1[j];
+//				}
+//				if (min > BUFF_ADC1[j]) {
+//					min = BUFF_ADC1[j];
+//				}
+				j++;
+			}
+			meanstrigger = meanstrigger >> 7;
+		}
+		switch (trig_type) {
+		case 0:
+			trigger = trig;
+			break;
+		case 1:
+			trigger = meanstrigger / 10;
+			break;
+		case 2:
+//		Trigger by multiple sample
+			break;
+		default:
+			trigger = trig;
+			break;
+		}
+
+		j = bfstart + 84;
+		samples = 0;
+		while (BUFF_ADC1[j] > trigger && (j < (bfstop - 168))) {
+			j++;
+		}
+		while (BUFF_ADC1[j] < trigger && (j < (bfstop - 84))) {
+			j++;
+		}
+
+		if (j >= bfstop - 84) {
+			j = 84;
+		}
+
+		j = j - 84;
 	}
 
-	j = 0;
-	while (BUFF_ADC1[j] >> 2 > trigger >> 2 && j < 84) {
-		j++;
-	}
-	while (BUFF_ADC1[j] >> 2 < trigger >> 2 && j < 84) {
-		j++;
-	}
-
-	if (j == 84) {
-		j = 0;
-	}
 	i = 0;
 	while (i < 84) {
 		val = BUFF_ADC1[i + j];
 		val2 = BUFF_ADC3[i + j];
-		if (i % 10 == 0) {
-			Nokia_map[1][i] = 1;
+		if (del) {
+			if ((i % 10) - 2 == 0) {
+				Nokia_map[1][i] = 1; //1
+			} else {
+				Nokia_map[1][i] = 0;
+			}
+			if ((i % 10) - 2 == 0) {
+				Nokia_map[2][i] = 0;
+			} else {
+				Nokia_map[2][i] = 0;
+			}
+			if ((i % 10) - 2 == 0) {
+				Nokia_map[3][i] = 1;
+			} else {
+				Nokia_map[3][i] = 0;
+			}
+			if ((i % 10) - 2 == 0) {
+				Nokia_map[4][i] = 128; //128
+			} else {
+				Nokia_map[4][i] = 0;
+			}
 		} else {
-			Nokia_map[1][i] = 0;
+			Nokia_map[4 - (val >> 10)][i] = Nokia_map[4 - (val >> 10)][i]
+					| (1 << (7 - ((val >> 7) & 0b00000111)));
+			Nokia_map[4 - (val2 >> 10)][i] = Nokia_map[4 - (val2 >> 10)][i]
+					| (1 << (7 - ((val2 >> 7) & 0b00000111)));
 		}
-		Nokia_map[2][i] = 0;
-		if (i % 10 == 0) {
-			Nokia_map[3][i] = 1;
-		} else {
-			Nokia_map[3][i] = 0;
-		}
-		if (i % 10 == 0) {
-			Nokia_map[4][i] = 128;
-		} else {
-			Nokia_map[4][i] = 0;
-		}
-		Nokia_map[4 - (val >> 10)][i] = Nokia_map[4 - (val >> 10)][i]
-				| (1 << (7 - ((val >> 7) & 0b00000111)));
-		Nokia_map[4 - (val2 >> 10)][i] = Nokia_map[4 - (val2 >> 10)][i]
-						| (1 << (7 - ((val2 >> 7) & 0b00000111)));
 		i++;
 		means += val;
 	}
-	means /= 104;
+	means /= 84;
 	x = 0;
 	y = 5;
 	sprintf(str, "means :%dmV", means);
@@ -373,7 +432,7 @@ int main(void)
 	uint8_t x;
 	uint8_t y;
   /* USER CODE END 1 */
-
+  
 
   /* MCU Configuration--------------------------------------------------------*/
 
@@ -398,6 +457,8 @@ int main(void)
   MX_TIM1_Init();
   MX_ADC1_Init();
   MX_TIM2_Init();
+  MX_TIM4_Init();
+  MX_TIM8_Init();
   MX_ADC3_Init();
   /* USER CODE BEGIN 2 */
 	nokia_init(&hspi1);
@@ -405,11 +466,13 @@ int main(void)
 	y = 0;
 	nokia_str("STM32SCOPE", &x, &y);
 	HAL_TIM_Base_Start_IT(&htim1);
-	HAL_ADC_Start_DMA(&hadc1, BUFF_ADC1, ADC_BUFF);
-	HAL_ADC_Start_DMA(&hadc3, BUFF_ADC3, ADC_BUFF);
+	HAL_ADC_Start_DMA(&hadc1, (uint32_t*) BUFF_ADC1, ADC_BUFF);
+	HAL_ADC_Start_DMA(&hadc3, (uint32_t*) BUFF_ADC3, ADC_BUFF);
 	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+	HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
+	HAL_TIM_Base_Start(&htim8);
 
-	__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 1950);
+	__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 1500);
 
   /* USER CODE END 2 */
 
@@ -434,7 +497,7 @@ void SystemClock_Config(void)
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
   RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
-  /** Initializes the CPU, AHB and APB busses clocks
+  /** Initializes the CPU, AHB and APB busses clocks 
   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
@@ -442,26 +505,26 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL7;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
   }
-  /** Initializes the CPU, AHB and APB busses clocks
+  /** Initializes the CPU, AHB and APB busses clocks 
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV16;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
   PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC;
-  PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV8;
+  PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV4;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
@@ -485,24 +548,28 @@ static void MX_ADC1_Init(void)
   /* USER CODE BEGIN ADC1_Init 1 */
 
   /* USER CODE END ADC1_Init 1 */
-  /** Common config
+  /** Common config 
   */
   hadc1.Instance = ADC1;
   hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
   hadc1.Init.ContinuousConvMode = ENABLE;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
-  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc1.Init.ExternalTrigConv = ADC_EXTERNALTRIGCONV_T8_TRGO;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc1.Init.NbrOfConversion = 1;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
   {
     Error_Handler();
   }
-  /** Configure Regular Channel
+  /** Enable or disable the remapping of ADC1_ETRGREG:
+  * ADC1 External Event regular conversion is connected to TIM8 TRG0 
+  */
+  __HAL_AFIO_REMAP_ADC1_ETRGREG_ENABLE();
+  /** Configure Regular Channel 
   */
   sConfig.Channel = ADC_CHANNEL_2;
   sConfig.Rank = ADC_REGULAR_RANK_1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_239CYCLES_5;
+  sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -530,24 +597,24 @@ static void MX_ADC3_Init(void)
   /* USER CODE BEGIN ADC3_Init 1 */
 
   /* USER CODE END ADC3_Init 1 */
-  /** Common config
+  /** Common config 
   */
   hadc3.Instance = ADC3;
   hadc3.Init.ScanConvMode = ADC_SCAN_DISABLE;
   hadc3.Init.ContinuousConvMode = ENABLE;
   hadc3.Init.DiscontinuousConvMode = DISABLE;
-  hadc3.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc3.Init.ExternalTrigConv = ADC_EXTERNALTRIGCONV_T8_TRGO;
   hadc3.Init.DataAlign = ADC_DATAALIGN_RIGHT;
   hadc3.Init.NbrOfConversion = 1;
   if (HAL_ADC_Init(&hadc3) != HAL_OK)
   {
     Error_Handler();
   }
-  /** Configure Regular Channel
+  /** Configure Regular Channel 
   */
   sConfig.Channel = ADC_CHANNEL_3;
   sConfig.Rank = ADC_REGULAR_RANK_1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_239CYCLES_5;
+  sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
   if (HAL_ADC_ConfigChannel(&hadc3, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -615,9 +682,9 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 7199;
+  htim1.Init.Prescaler = 5599;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 99;
+  htim1.Init.Period = 1999;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -701,10 +768,115 @@ static void MX_TIM2_Init(void)
 
 }
 
+/**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 2250;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 1;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 1;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
+  HAL_TIM_MspPostInit(&htim4);
+
+}
+
+/**
+  * @brief TIM8 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM8_Init(void)
+{
+
+  /* USER CODE BEGIN TIM8_Init 0 */
+
+  /* USER CODE END TIM8_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM8_Init 1 */
+
+  /* USER CODE END TIM8_Init 1 */
+  htim8.Instance = TIM8;
+  htim8.Init.Prescaler = 42;
+  htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim8.Init.Period = 1;
+  htim8.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim8.Init.RepetitionCounter = 0;
+  htim8.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim8, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim8, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM8_Init 2 */
+
+  /* USER CODE END TIM8_Init 2 */
+
+}
+
 /** 
   * Enable DMA controller clock
   */
-static void MX_DMA_Init(void)
+static void MX_DMA_Init(void) 
 {
 
   /* DMA controller clock enable */
@@ -785,7 +957,7 @@ void Error_Handler(void)
   * @retval None
   */
 void assert_failed(uint8_t *file, uint32_t line)
-{
+{ 
   /* USER CODE BEGIN 6 */
 	/* User can add his own implementation to report the file name and line number,
 	 tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */

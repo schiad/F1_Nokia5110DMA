@@ -126,11 +126,10 @@ static const uint8_t ASCII[96][5] = { { 0x00, 0x00, 0x00, 0x00, 0x00 } // 20
 		, { 0x78, 0x46, 0x41, 0x46, 0x78 } // 7f →
 };
 
-uint8_t Nokia_map[6][84];
-uint16_t ADC_BUFF = 4200;
-uint16_t BUFF_ADC1[4200];
-uint16_t BUFF_ADC3[4200];
-uint16_t trig = 2048;
+uint8_t Nokia_map[6][84];	//	504		uint8_t
+uint16_t ADC_BUFF = 3696;
+uint16_t BUFF_ADC1[3696];	//	4200	uint16_t (8400)
+uint16_t BUFF_ADC3[3696];	//	4200	uint16_t (8400)
 
 /* USER CODE END PTD */
 
@@ -178,6 +177,130 @@ static void MX_ADC3_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+/* Scope function calculating some statistics
+ * When calculating means of 2100 samples its take about 1.14ms
+ * */
+void Scope_qualifying_signal(uint32_t start, uint32_t *meanstrigger,
+		uint8_t *trig_type) {
+	uint16_t j;
+	if (*trig_type == 1) {
+		j = 0;
+		*meanstrigger = 0;
+		while (j < ADC_BUFF / 2) {
+			*meanstrigger += BUFF_ADC1[j];
+			j++;
+		}
+		*meanstrigger = *meanstrigger / (ADC_BUFF / 2);
+	}
+}
+
+/* Scope buffer signal to display on screen with some feature like trigger
+ * When using means of signal for trigger (1 trig_type) it's take 1,45ms to compute for 2100 samples
+ * When using a simple trigger (0 trig_type) it's take 0.31ms for 2100 samples
+ * */
+void Scope_buff_to_Disp(uint16_t trig, uint8_t trig_type, uint8_t del,
+		uint8_t half, uint16_t jump) {
+	static uint16_t i, x, j, y, k;
+	static uint16_t val;
+	static uint16_t val2;
+	static uint16_t trigger;
+	static uint32_t means, meanstrigger;
+	static uint16_t min, max;
+	static uint16_t bfstart, bfstop;
+	static uint8_t str[20];
+	meanstrigger = 0;
+	max = 0;
+	min = 65535;
+	if (!del) {
+		if (half) {
+			bfstart = ADC_BUFF / 2;
+			bfstop = ADC_BUFF;
+		} else {
+			bfstart = 0;
+			bfstop = ADC_BUFF / 2;
+		}
+
+		Scope_qualifying_signal(bfstart, &meanstrigger, &trig_type);
+
+		switch (trig_type) {
+		case 0:
+			trigger = trig;
+			break;
+		case 1:
+			trigger = meanstrigger / 10;
+			break;
+		case 2:
+//		Trigger by multiple sample
+			break;
+		default:
+			trigger = trig;
+			break;
+		}
+
+		j = bfstart + 42 * jump;
+		while (BUFF_ADC1[j] > trigger && (j < (bfstop - 168))) {
+			j++;
+		}
+		while (BUFF_ADC1[j] < trigger && (j < (bfstop - 84))) {
+			j++;
+		}
+
+		if (j >= bfstop - 42 * jump) {
+			j = 84 * jump;
+		}
+
+		j -= (42 * jump) - 0;
+	}
+
+	i = 0;
+	means = 0;
+	while (i < 84) {
+		if (del) {
+			if ((i % 10) - 2 == 0) {
+				Nokia_map[1][i] = 1; //1
+			} else {
+				Nokia_map[1][i] = 0;
+			}
+			if ((i % 10) - 2 == 0) {
+				Nokia_map[2][i] = 0;
+			} else {
+				Nokia_map[2][i] = 0;
+			}
+			if ((i % 10) - 2 == 0) {
+				Nokia_map[3][i] = 1;
+			} else {
+				Nokia_map[3][i] = 0;
+			}
+			if ((i % 10) - 2 == 0) {
+				Nokia_map[4][i] = 128; //128
+			} else {
+				Nokia_map[4][i] = 0;
+			}
+		} else {
+			k = 0;
+			while (k < jump) {
+				val = BUFF_ADC1[i * jump + j + k];
+				val2 = BUFF_ADC3[i * jump + j + k];
+				Nokia_map[4 - (val >> 10)][i] = Nokia_map[4 - (val >> 10)][i]
+						| (1 << (7 - ((val >> 7) & 0b00000111)));
+				Nokia_map[4 - (val2 >> 10)][i] = Nokia_map[4 - (val2 >> 10)][i]
+						| (1 << (7 - ((val2 >> 7) & 0b00000111)));
+				k++;
+				means += val;
+			}
+		}
+		i++;
+
+	}
+	means /= 4096;
+	means *= 3300;
+	means /= (84 * jump);
+	x = 0;
+	y = 5;
+	sprintf(str, "means :%dmV", means);
+	nokia_str(str, &x, &y);
+}
 
 void nokia_senddata(SPI_HandleTypeDef *hspi, uint8_t *data, uint16_t len) {
 	uint16_t i = 0;
@@ -284,7 +407,7 @@ void nokia_refresh_map(SPI_HandleTypeDef *hspi) {
 
 void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi) {
 	HAL_GPIO_WritePin(CE_GPIO_Port, CE_Pin, 1);
-	Scope_buff_to_Disp(2048, 0, 1, 0);
+	Scope_buff_to_Disp(2048, 0, 1, 0, 1);
 
 }
 
@@ -295,129 +418,19 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 }
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
-	HAL_GPIO_TogglePin(ADCint_GPIO_Port, ADCint_Pin);
 	if (hadc->Instance == ADC3) {
-		Scope_buff_to_Disp(2048, 0, 0, 1);
+		HAL_GPIO_TogglePin(ADCint_GPIO_Port, ADCint_Pin);
+		Scope_buff_to_Disp(2048, 0, 0, 1, 1);
+		HAL_GPIO_TogglePin(ADCint_GPIO_Port, ADCint_Pin);
 	}
-	HAL_GPIO_TogglePin(ADCint_GPIO_Port, ADCint_Pin);
 }
 
 void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef* hadc) {
-	HAL_GPIO_TogglePin(ADCint_GPIO_Port, ADCint_Pin);
 	if (hadc->Instance == ADC3) {
-		Scope_buff_to_Disp(2048, 0, 0, 0);
+		HAL_GPIO_TogglePin(ADCint_GPIO_Port, ADCint_Pin);
+		Scope_buff_to_Disp(2048, 0, 0, 0, 1);
+		HAL_GPIO_TogglePin(ADCint_GPIO_Port, ADCint_Pin);
 	}
-	HAL_GPIO_TogglePin(ADCint_GPIO_Port, ADCint_Pin);
-}
-
-void Scope_buff_to_Disp(uint16_t trig, uint8_t trig_type, uint8_t del,
-		uint8_t half) {
-	static uint16_t i, x;
-	static uint16_t j, y;
-	static uint16_t val;
-	static uint16_t val2;
-	static uint16_t trigger;
-	static uint32_t means, meanstrigger;
-	static uint32_t samples;
-	static uint16_t min, max;
-	static uint16_t bfstart, bfstop;
-	static uint8_t str[20];
-	meanstrigger = 0;
-	max = 0;
-	min = 65535;
-	if (!del) {
-		if (half) {
-			bfstart = ADC_BUFF / 2;
-			bfstop = ADC_BUFF;
-		} else {
-			bfstart = 0;
-			bfstop = ADC_BUFF / 2;
-		}
-
-		if (trig_type == 1) {
-			j = 0;
-			while (j < 128) {
-				meanstrigger += BUFF_ADC1[j];
-//				if (max < BUFF_ADC1[j]) {
-//					max = BUFF_ADC1[j];
-//				}
-//				if (min > BUFF_ADC1[j]) {
-//					min = BUFF_ADC1[j];
-//				}
-				j++;
-			}
-			meanstrigger = meanstrigger >> 7;
-		}
-		switch (trig_type) {
-		case 0:
-			trigger = trig;
-			break;
-		case 1:
-			trigger = meanstrigger / 10;
-			break;
-		case 2:
-//		Trigger by multiple sample
-			break;
-		default:
-			trigger = trig;
-			break;
-		}
-
-		j = bfstart + 84;
-		samples = 0;
-		while (BUFF_ADC1[j] > trigger && (j < (bfstop - 168))) {
-			j++;
-		}
-		while (BUFF_ADC1[j] < trigger && (j < (bfstop - 84))) {
-			j++;
-		}
-
-		if (j >= bfstop - 84) {
-			j = 84;
-		}
-
-		j = j - 84;
-	}
-
-	i = 0;
-	while (i < 84) {
-		val = BUFF_ADC1[i + j];
-		val2 = BUFF_ADC3[i + j];
-		if (del) {
-			if ((i % 10) - 2 == 0) {
-				Nokia_map[1][i] = 1; //1
-			} else {
-				Nokia_map[1][i] = 0;
-			}
-			if ((i % 10) - 2 == 0) {
-				Nokia_map[2][i] = 0;
-			} else {
-				Nokia_map[2][i] = 0;
-			}
-			if ((i % 10) - 2 == 0) {
-				Nokia_map[3][i] = 1;
-			} else {
-				Nokia_map[3][i] = 0;
-			}
-			if ((i % 10) - 2 == 0) {
-				Nokia_map[4][i] = 128; //128
-			} else {
-				Nokia_map[4][i] = 0;
-			}
-		} else {
-			Nokia_map[4 - (val >> 10)][i] = Nokia_map[4 - (val >> 10)][i]
-					| (1 << (7 - ((val >> 7) & 0b00000111)));
-			Nokia_map[4 - (val2 >> 10)][i] = Nokia_map[4 - (val2 >> 10)][i]
-					| (1 << (7 - ((val2 >> 7) & 0b00000111)));
-		}
-		i++;
-		means += val;
-	}
-	means /= 84;
-	x = 0;
-	y = 5;
-	sprintf(str, "means :%dmV", means);
-	nokia_str(str, &x, &y);
 }
 
 /* USER CODE END 0 */
@@ -432,7 +445,6 @@ int main(void)
 	uint8_t x;
 	uint8_t y;
   /* USER CODE END 1 */
-  
 
   /* MCU Configuration--------------------------------------------------------*/
 
@@ -648,7 +660,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -684,7 +696,7 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 5599;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 1999;
+  htim1.Init.Period = 4999;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -846,7 +858,7 @@ static void MX_TIM8_Init(void)
 
   /* USER CODE END TIM8_Init 1 */
   htim8.Instance = TIM8;
-  htim8.Init.Prescaler = 42;
+  htim8.Init.Prescaler = 420;
   htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim8.Init.Period = 1;
   htim8.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
